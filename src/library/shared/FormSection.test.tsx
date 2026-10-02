@@ -16,7 +16,7 @@ import {
   waitFor,
   type RenderResult,
 } from "@testing-library/react";
-import { FormSection, FormSectionProps } from "./FormSection.tsx";
+import { config, FormSection, FormSectionProps } from "../sections/FormSection.tsx";
 import {
   sharedComponentConfigs,
   sharedComponentMetadata,
@@ -1122,11 +1122,12 @@ describe("FormSection", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   });
 
-  it("when a saved entity layout uses FormSection, then its hidden config is available", () => {
-    expect(sharedComponentMetadata).toContainEqual({
+  it("when a saved entity layout uses FormSection, then its section config is available", () => {
+    expect(config).toMatchObject({
       id: "FormSection",
       pageSetTypes: ["ENTITY"],
     });
-    expect(sharedComponentConfigs.FormSection).toBe(FormSection);
+    expect(sharedComponentMetadata.some((component) => component.id === config.id)).toBe(false);
+    expect(sharedComponentConfigs.FormSection).toBeUndefined();
   });
 });
