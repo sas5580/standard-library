@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "yext_standard-library",
-  "displayName": "Standard Library",
-  "description": "The original Pages for Marketers sections.",
+  "id": "sas-standard-library",
+  "displayName": "Sas' Standard Library",
+  "description": "The Sas original Pages for Marketers sections.",
   "locales": [
     "cs",
     "da",
