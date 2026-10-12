@@ -46,7 +46,7 @@ export interface FormSectionProps {
     description: YextEntityField<TranslatableRichText>;
     phoneOptInText: YextEntityField<TranslatableRichText>;
     submitLabel: YextEntityField<TranslatableString>;
-    formType: "HS_CONTACT" | "HS_EVENT";
+    formType: "HS_CONTACT" | "HS_EVENT" | "CUSTOM_PLUGIN" | "EMAIL_ONLY";
     showPreferredContactMethod: boolean;
     defaultContactMethod: "PHONE" | "EMAIL";
     fields: FormField[];
@@ -985,6 +985,14 @@ const formSectionFields: YextFields<FormSectionProps> = {
           {
             label: msg("form.hearsayEvent", "Hearsay Event"),
             value: "HS_EVENT",
+          },
+          {
+            label: msg("form.customPlugin", "Custom Plugin"),
+            value: "CUSTOM_PLUGIN",
+          },
+          {
+            label: msg("form.emailOnly", "Email Only"),
+            value: "EMAIL_ONLY",
           },
         ],
       },
