@@ -133,6 +133,18 @@ const directSectionCases: DirectSectionCase[] = [
         "photoGallery";
       props.slots.PhotoGalleryWrapper[0].props.data.images.constantValueEnabled = false;
       props.slots.PhotoGalleryWrapper[0].props.data.images.constantValue = [];
+      props.slots.PhotoGalleryWrapper[0].props.data.images.mappings = {
+        image: {
+          field: "$item",
+          constantValueEnabled: false,
+          constantValue: undefined,
+        },
+        link: {
+          field: "",
+          constantValueEnabled: false,
+          constantValue: undefined,
+        },
+      };
       return props;
     },
     createConstantEmptyProps: () => {
@@ -255,7 +267,20 @@ describe.each(directSectionCases)(
       });
 
       await waitFor(() => {
-        expect(result.container.childElementCount).toBe(0);
+        if (sectionConfig === PhotoGallerySection) {
+          const hiddenWrapper = result.container.querySelector(
+            '.hidden[aria-hidden="true"]'
+          );
+          expect(hiddenWrapper).not.toBeNull();
+          expect(
+            hiddenWrapper?.querySelector(EMPTY_STATE_MARKER_SELECTOR)
+          ).not.toBeNull();
+          expect(
+            result.queryByRole("region", { name: "Photo Gallery" })
+          ).toBeNull();
+        } else {
+          expect(result.container.childElementCount).toBe(0);
+        }
       });
     });
 

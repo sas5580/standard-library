@@ -1208,7 +1208,7 @@ describe("PhotoGallerySection", async () => {
       await waitFor(() => {
         expect(
           within(container).queryByRole("region", {
-            name: "Photo Gallery Section",
+            name: "Photo Gallery",
           }) !== null
         ).toBe(constantValueEnabled);
       });
