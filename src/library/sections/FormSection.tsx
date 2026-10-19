@@ -438,7 +438,7 @@ const FormFields = ({
         message: "message",
       }[
         field.type as "firstName" | "lastName" | "phone" | "email" | "message"
-      ] ?? `custom_${index}`;
+      ] ?? `custom_data[${field.key?.trim()}]`;
     const id = `${formId}-${index}`;
 
     if (field.type === "preferredContactMethod") {
@@ -754,7 +754,7 @@ const FormSectionComponent: PuckComponent<FormSectionProps> = ({
     const missingGroups = fields.flatMap((field, index) =>
       field.type === "checkboxGroup" &&
       field.required &&
-      !values.getAll(`custom_${index}`).length
+      !values.getAll(`custom_data[${field.key?.trim()}]`).length
         ? [index]
         : []
     );
@@ -875,14 +875,6 @@ const FormSectionComponent: PuckComponent<FormSectionProps> = ({
             locale={locale}
             streamDocument={streamDocument}
           />
-          <div className="sr-only" aria-hidden="true">
-            <input
-              name="yext_wingspan_url"
-              type="text"
-              tabIndex={-1}
-              autoComplete="off"
-            />
-          </div>
           {!puck.isEditing && (
             <div ref={turnstileContainerRef} suppressHydrationWarning>
               {CustomCodeSection.render?.({

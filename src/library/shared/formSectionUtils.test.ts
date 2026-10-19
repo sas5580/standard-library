@@ -43,7 +43,7 @@ describe("hasInvalidConfiguration", () => {
       expected: true,
     },
     {
-      name: "a custom key uses the honeypot name",
+      name: "a custom key contains wingspan",
       entityId: "location-1",
       fields: [
         { type: "preferredContactMethod", label: "Contact method" },
@@ -53,7 +53,7 @@ describe("hasInvalidConfiguration", () => {
         { type: "email", label: "Email" },
         { type: "text", label: "Website", key: "my_wingspan_url" },
       ] as FormField[],
-      expected: true,
+      expected: false,
     },
     {
       name: "a dropdown has no choices",
@@ -94,11 +94,11 @@ describe("prepareSubmissionData", () => {
     values.set("email", " ada@example.com ");
     values.set("message", " Hello ");
     values.set("relate_opt_in", "on");
-    values.set("yext_wingspan_url", "");
-    values.set("custom_6", "  Agent  ");
-    values.set("custom_7", "morning");
-    values.append("custom_8", "home");
-    values.append("custom_8", "savings");
+    values.set("custom_data[yext_wingspan_url]", "");
+    values.set("custom_data[role]", "  Agent  ");
+    values.set("custom_data[time]", "morning");
+    values.append("custom_data[reasons]", "home");
+    values.append("custom_data[reasons]", "savings");
 
     expect(
       prepareSubmissionData(
@@ -138,7 +138,6 @@ describe("prepareSubmissionData", () => {
       message: "Hello",
       relate_opt_in: true,
       custom_data: {
-        yext_wingspan_url: "",
         role: "Agent",
         time: "morning",
         reasons: ["home", "savings"],
@@ -169,8 +168,40 @@ describe("prepareSubmissionData", () => {
       last_name: "Lovelace",
       preferred_contact_method: "EMAIL",
       email: "ada@example.com",
-      custom_data: { yext_wingspan_url: "" },
+      custom_data: {},
     });
+  });
+
+  it.each([
+    { name: "raw injected text", type: undefined, entries: ["  injected  "], expected: "  injected  " },
+    { name: "injected whitespace", type: undefined, entries: ["   "], expected: "   " },
+    { name: "empty injected values", type: undefined, entries: ["", ""], expected: undefined },
+    { name: "one populated injected value", type: undefined, entries: ["", "one", ""], expected: "one" },
+    { name: "repeated injected values", type: undefined, entries: ["one", "", " two "], expected: ["one", " two "] },
+    { name: "empty configured text", type: "text", entries: ["   "], expected: undefined },
+    { name: "trimmed dropdown", type: "dropdown", entries: [" morning "], expected: "morning" },
+    { name: "empty dropdown", type: "dropdown", entries: ["   "], expected: undefined },
+    { name: "one checkbox selection", type: "checkboxGroup", entries: ["home"], expected: ["home"] },
+    { name: "raw checkbox values", type: "checkboxGroup", entries: [" home "], expected: [" home "] },
+    { name: "configured and injected text sharing a key", type: "text", entries: [" Agent ", "injected"], expected: ["Agent", "injected"] },
+    { name: "configured and injected dropdown sharing a key", type: "dropdown", entries: ["morning", "injected"], expected: ["morning", "injected"] },
+    { name: "configured and injected checkboxes sharing a key", type: "checkboxGroup", entries: ["home", "injected"], expected: ["home", "injected"] },
+    { name: "prototype property key", key: "__proto__", type: undefined, entries: ["value"], expected: "value" },
+  ] as const)("serializes $name", ({ type, entries, expected, ...testCase }) => {
+    const key = ("key" in testCase ? testCase.key : undefined) ?? "example";
+    const values = new FormData();
+    values.set("first_name", "Ada");
+    values.set("last_name", "Lovelace");
+    values.set("phone", "5555555555");
+    entries.forEach((value) => values.append(`custom_data[${key}]`, value));
+    values.set("unrelated", "ignored");
+    values.set("custom_data[]", "ignored");
+    values.set("custom_data[example]suffix", "ignored");
+    const fields: FormField[] = type ? [{ type, label: "Example", key: ` ${key} ` }] : [];
+
+    expect(prepareSubmissionData(values, fields, "PHONE")?.custom_data).toEqual(
+      expected === undefined ? {} : { [key]: expected }
+    );
   });
 
   it.each([
@@ -208,7 +239,7 @@ describe("prepareSubmissionData", () => {
         ["first_name", "Ada"],
         ["last_name", "Lovelace"],
         ["phone", "5555555555"],
-        ["custom_3", "   "],
+        ["custom_data[reason]", "   "],
       ],
       fields: [
         { type: "firstName", label: "First name" },
@@ -216,6 +247,17 @@ describe("prepareSubmissionData", () => {
         { type: "phone", label: "Phone" },
         { type: "text", label: "Reason", key: "reason", required: true },
       ] as FormField[],
+    },
+    {
+      name: "required dropdown is empty",
+      contactMethod: "PHONE" as const,
+      entries: [
+        ["first_name", "Ada"],
+        ["last_name", "Lovelace"],
+        ["phone", "5555555555"],
+        ["custom_data[reason]", ""],
+      ],
+      fields: [{ type: "dropdown", label: "Reason", key: " reason ", required: true }] as FormField[],
     },
     {
       name: "required checkbox group is empty",
