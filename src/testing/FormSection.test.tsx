@@ -16,25 +16,25 @@ import {
   waitFor,
   type RenderResult,
 } from "@testing-library/react";
-import { FormSection, FormSectionProps } from "./FormSection.tsx";
+import { config, FormSection, FormSectionProps } from "../library/sections/FormSection.tsx";
 import {
   sharedComponentConfigs,
   sharedComponentMetadata,
-} from "./componentRegistry.ts";
+} from "../library/shared/componentRegistry.ts";
 import {
   backgroundColors,
   VisualEditorProvider,
   type StreamDocument,
 } from "@yext/visual-editor";
 
-const renderForm = (
+const renderForm = async (
   props: FormSectionProps,
   isEditing = false,
   container?: HTMLElement,
   streamDocument: StreamDocument = { id: "location-1", locale: "en" },
   siteKey = "test-site-key",
   editorPreview = false
-): RenderResult => {
+): Promise<RenderResult> => {
   const form = (
     <VisualEditorProvider templateProps={{ document: streamDocument }}>
       {FormSection.render?.({
@@ -49,22 +49,26 @@ const renderForm = (
       } as Parameters<NonNullable<typeof FormSection.render>>[0])}
     </VisualEditorProvider>
   );
-  if (isEditing || editorPreview) {
-    const renderContainer =
-      container ?? document.body.appendChild(document.createElement("div"));
-    if (editorPreview) {
-      renderContainer.setAttribute("data-puck-entry", "");
-    }
-    return render(form, { container: renderContainer });
-  }
   const renderContainer =
     container ?? document.body.appendChild(document.createElement("div"));
-  const renderedPage = new DOMParser().parseFromString(
-    renderToString(form).replaceAll("<YEXT_TURNSTILE_SITE_KEY>", siteKey),
-    "text/html"
-  );
-  renderContainer.replaceChildren(...Array.from(renderedPage.body.childNodes));
-  return render(form, { container: renderContainer, hydrate: true });
+  if (editorPreview) {
+    renderContainer.setAttribute("data-puck-entry", "");
+  }
+
+  const hydrate = !isEditing && !editorPreview;
+  if (hydrate) {
+    const renderedPage = new DOMParser().parseFromString(
+      renderToString(form).replaceAll("<YEXT_TURNSTILE_SITE_KEY>", siteKey),
+      "text/html"
+    );
+    renderContainer.replaceChildren(...Array.from(renderedPage.body.childNodes));
+  }
+
+  let result!: RenderResult;
+  await act(async () => {
+    result = render(form, { container: renderContainer, hydrate });
+  });
+  return result;
 };
 
 const getProps = (): FormSectionProps =>
@@ -118,7 +122,7 @@ describe("FormSection", () => {
         { label: "Building savings", value: "savings" },
       ],
     });
-    renderForm(props);
+    await renderForm(props);
     await waitFor(() =>
       expect(
         (
@@ -176,9 +180,9 @@ describe("FormSection", () => {
     ).toBe("");
   });
 
-  it("sends an event form with email when the method selector is hidden", async () => {
+  it.each(["HS_EVENT", "CUSTOM_PLUGIN", "EMAIL_ONLY"] as const)("sends a %s form with email when the method selector is hidden", async (formType) => {
     const props = getProps();
-    props.data.formType = "HS_EVENT";
+    props.data.formType = formType;
     props.data.showPreferredContactMethod = false;
     props.data.defaultContactMethod = "EMAIL";
     props.data.fields.push({
@@ -187,7 +191,7 @@ describe("FormSection", () => {
       key: "preferred_time",
       options: [{ label: "Morning", value: "morning" }],
     });
-    renderForm(props);
+    await renderForm(props);
     await waitFor(() =>
       expect(
         (
@@ -214,7 +218,7 @@ describe("FormSection", () => {
 
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
     const body = JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string);
-    expect(body.type).toBe("HS_EVENT");
+    expect(body.type).toBe(formType);
     expect(body.data).toEqual({
       first_name: "Ada",
       last_name: "Lovelace",
@@ -232,7 +236,7 @@ describe("FormSection", () => {
 
   it("blocks submission when a required contact field is missing", async () => {
     const props = getProps();
-    renderForm(props);
+    await renderForm(props);
     await waitFor(() =>
       expect(
         (
@@ -247,14 +251,14 @@ describe("FormSection", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("rejects a visible honeypot custom key", () => {
+  it("rejects a visible honeypot custom key", async () => {
     const props = getProps();
     props.data.fields.push({
       type: "text",
       label: "Website",
       key: "yext_wingspan_url",
     });
-    renderForm(props);
+    await renderForm(props);
     expect(screen.getByRole("alert").textContent).toContain(
       "This form is not ready"
     );
@@ -273,7 +277,7 @@ describe("FormSection", () => {
     vi.mocked(fetch)
       .mockResolvedValueOnce({ ok: false } as Response)
       .mockResolvedValueOnce({ ok: true } as Response);
-    renderForm(props);
+    await renderForm(props);
     await waitFor(() =>
       expect(
         (
@@ -318,8 +322,8 @@ describe("FormSection", () => {
     expect(reset).toHaveBeenCalledTimes(2);
   });
 
-  it("keeps the editor preview inert without a Turnstile key", () => {
-    renderForm(getProps(), true);
+  it("keeps the editor preview inert without a Turnstile key", async () => {
+    await renderForm(getProps(), true);
     expect(screen.getByRole("heading", { name: "Contact us" })).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Send Message" }));
@@ -327,12 +331,12 @@ describe("FormSection", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("blocks a setup without an email field when both methods are offered", () => {
+  it("blocks a setup without an email field when both methods are offered", async () => {
     const props = getProps();
     props.data.fields = props.data.fields.filter(
       (field) => field.type !== "email"
     );
-    renderForm(props);
+    await renderForm(props);
     expect(screen.getByRole("alert").textContent).toContain(
       "This form is not ready"
     );
@@ -354,7 +358,7 @@ describe("FormSection", () => {
     formDocument.body.appendChild(container);
     const props = getProps();
     const { getByRole, getByLabelText, getByPlaceholderText, unmount } =
-      renderForm(props, false, container);
+      await renderForm(props, false, container);
     const script = formDocument.querySelector<HTMLScriptElement>(
       'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"]'
     );
@@ -405,7 +409,7 @@ describe("FormSection", () => {
     const logError = vi.spyOn(console, "error").mockImplementation(() => {});
     delete window.turnstile;
     const props = getProps();
-    renderForm(props);
+    await renderForm(props);
     document
       .querySelector<HTMLScriptElement>(
         'script[src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit"]'
@@ -420,7 +424,7 @@ describe("FormSection", () => {
 
   it("keeps Backspace and Delete in form text fields from reaching Puck", async () => {
     const props = getProps();
-    renderForm(props);
+    await renderForm(props);
     await waitFor(() =>
       expect(
         (
@@ -461,7 +465,7 @@ describe("FormSection", () => {
   it("when Turnstile does not return a token, then the form exits pending state", async () => {
     const props = getProps();
     execute.mockImplementation(() => {});
-    renderForm(props);
+    await renderForm(props);
     const button = screen.getByRole("button", {
       name: "Send Message",
     }) as HTMLButtonElement;
@@ -477,7 +481,9 @@ describe("FormSection", () => {
       target: { value: "5555555555" },
     });
     fireEvent.click(button);
-    turnstileOptions["timeout-callback"]();
+    await act(async () => {
+      turnstileOptions["timeout-callback"]();
+    });
     await waitFor(() =>
       expect(screen.getByRole("alert").textContent).toContain(
         "could not be sent"
@@ -525,7 +531,7 @@ describe("FormSection", () => {
         props.data.fields.find((field) => field.type === "message")!.required =
           true;
       }
-      renderForm(props);
+      await renderForm(props);
       const button = screen.getByRole("button", { name: "Send Message" });
       await waitFor(() =>
         expect((button as HTMLButtonElement).disabled).toBe(false)
@@ -552,7 +558,7 @@ describe("FormSection", () => {
 
   it("sends the hidden honeypot value in custom data", async () => {
     const props = getProps();
-    const { container } = renderForm(props);
+    const { container } = await renderForm(props);
     const button = screen.getByRole("button", { name: "Send Message" });
     await waitFor(() =>
       expect((button as HTMLButtonElement).disabled).toBe(false)
@@ -582,8 +588,8 @@ describe("FormSection", () => {
     ).toBe("https://spam.example");
   });
 
-  it("uses the theme page section width", () => {
-    const { container } = renderForm(getProps(), true);
+  it("uses the theme page section width", async () => {
+    const { container } = await renderForm(getProps(), true);
 
     expect(container.querySelector("section")?.className).toContain(
       "max-w-pageSection-contentWidth"
@@ -591,10 +597,10 @@ describe("FormSection", () => {
     expect(container.querySelector(".max-w-xl")).toBeNull();
   });
 
-  it("when the contact method changes, then field order and required inputs stay correct", () => {
+  it("when the contact method changes, then field order and required inputs stay correct", async () => {
     const props = getProps();
     props.data.fields.reverse();
-    const { container } = renderForm(props, true);
+    const { container } = await renderForm(props, true);
     const fieldGrid = container.querySelector("form .grid")!;
     const fieldNames = Array.from(
       fieldGrid.querySelectorAll("input, textarea, select"),
@@ -638,7 +644,7 @@ describe("FormSection", () => {
   });
 
   it("when the site key marker is not replaced, then the live form is hidden", async () => {
-    const { container } = renderForm(
+    const { container } = await renderForm(
       getProps(),
       false,
       undefined,
@@ -655,7 +661,7 @@ describe("FormSection", () => {
 
   it("when Turnstile rejects the site key, then the live form is hidden", async () => {
     const props = getProps();
-    renderForm(props, false, undefined, undefined, "invalid-site-key");
+    await renderForm(props, false, undefined, undefined, "invalid-site-key");
     await waitFor(() => expect(window.turnstile?.render).toHaveBeenCalled());
 
     act(() => turnstileOptions["error-callback"]("110100"));
@@ -671,7 +677,7 @@ describe("FormSection", () => {
     execute.mockImplementation(() =>
       turnstileOptions["error-callback"]("200500")
     );
-    renderForm(props);
+    await renderForm(props);
     await waitFor(() =>
       expect(
         (
@@ -753,10 +759,10 @@ describe("FormSection", () => {
     }
   );
 
-  it("when the background is dark, then the contact method label uses the section text color", () => {
+  it("when the background is dark, then the contact method label uses the section text color", async () => {
     const props = getProps();
     props.styles.backgroundColor = backgroundColors.background6.value;
-    const { container } = renderForm(props, true);
+    const { container } = await renderForm(props, true);
     const legend = screen.getByText(/Preferred Communication Method/);
 
     expect(
@@ -766,13 +772,13 @@ describe("FormSection", () => {
     expect(legend.getAttribute("style")).toBeNull();
   });
 
-  it("when a contact method text color is set, then only its label uses that color", () => {
+  it("when a contact method text color is set, then only its label uses that color", async () => {
     const props = getProps();
     props.styles.preferredContactMethodTextColor = {
       selectedColor: "palette-primary",
       contrastingColor: "palette-primary-contrast",
     };
-    renderForm(props, true);
+    await renderForm(props, true);
 
     expect(
       screen.getByText(/Preferred Communication Method/).className
@@ -812,13 +818,13 @@ describe("FormSection", () => {
     });
   });
 
-  it("when Heading and Description use entity fields, then the Form shows entity text", () => {
+  it("when Heading and Description use entity fields, then the Form shows entity text", async () => {
     const props = getProps();
     props.data.heading.field = "formHeading";
     props.data.heading.constantValueEnabled = false;
     props.data.description.field = "formDescription";
     props.data.description.constantValueEnabled = false;
-    renderForm(props, true, undefined, {
+    await renderForm(props, true, undefined, {
       id: "location-1",
       locale: "en",
       formHeading: "Get in touch",
@@ -830,14 +836,14 @@ describe("FormSection", () => {
     expect(screen.queryByText("Contact us")).toBeNull();
   });
 
-  it("when phone opt-in text has a link, then the link appears beside the consent checkbox", () => {
+  it("when phone opt-in text has a link, then the link appears beside the consent checkbox", async () => {
     const props = getProps();
     props.data.phoneOptInText.constantValue = {
       defaultValue: {
         html: '<p>I consent to be contacted. See the <a href="/terms">terms of service</a>.</p>',
       },
     };
-    renderForm(props, true);
+    await renderForm(props, true);
 
     const checkbox = screen.getByRole("checkbox", {
       name: /I consent to be contacted/,
@@ -854,7 +860,7 @@ describe("FormSection", () => {
     });
   });
 
-  it("when text fields render, then their placeholders follow the configured labels", () => {
+  it("when text fields render, then their placeholders follow the configured labels", async () => {
     const props = getProps();
     props.data.fields.push({
       type: "text",
@@ -862,7 +868,7 @@ describe("FormSection", () => {
       key: "reference_number",
       required: false,
     });
-    const { container } = renderForm(props, true);
+    const { container } = await renderForm(props, true);
 
     for (const [name, placeholder] of [
       ["first_name", "First name"],
@@ -881,8 +887,8 @@ describe("FormSection", () => {
     }
   });
 
-  it("when the form renders, then it shows the required-field marker before the translated label", () => {
-    const { container } = renderForm(getProps(), true);
+  it("when the form renders, then it shows the required-field marker before the translated label", async () => {
+    const { container } = await renderForm(getProps(), true);
 
     expect(screen.getByText("* Required")).toBeTruthy();
     expect(container.querySelector("form")?.lastElementChild?.textContent).toBe(
@@ -914,7 +920,7 @@ describe("FormSection", () => {
   });
 
   it("when the server replaces the marker, then Turnstile uses the injected key", async () => {
-    const { container } = renderForm(
+    const { container } = await renderForm(
       getProps(),
       false,
       undefined,
@@ -938,7 +944,7 @@ describe("FormSection", () => {
   });
 
   it("when an editor preview submits, then it uses a test token without a POST", async () => {
-    renderForm(getProps(), false, undefined, undefined, undefined, true);
+    await renderForm(getProps(), false, undefined, undefined, undefined, true);
     await waitFor(() =>
       expect(
         (
@@ -969,8 +975,8 @@ describe("FormSection", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("when a required field changes and is left empty, then it gets a red border", () => {
-    renderForm(getProps(), true);
+  it("when a required field changes and is left empty, then it gets a red border", async () => {
+    await renderForm(getProps(), true);
     const firstName = screen.getByLabelText(/First name/) as HTMLInputElement;
 
     expect(firstName.className).not.toContain("border-red-600");
@@ -984,10 +990,10 @@ describe("FormSection", () => {
     expect(firstName.className).not.toContain("border-red-600");
   });
 
-  it("when Required is off, then the field label has no required marker", () => {
+  it("when Required is off, then the field label has no required marker", async () => {
     const props = getProps();
     props.data.fields[1].required = false;
-    renderForm(props, true);
+    await renderForm(props, true);
 
     expect(screen.getByText("First name").textContent).toBe("First name");
     expect(screen.getByLabelText("First name")).toHaveProperty(
@@ -996,7 +1002,7 @@ describe("FormSection", () => {
     );
   });
 
-  it("when CTA styles are set, then the button uses site colors", () => {
+  it("when CTA styles are set, then the button uses site colors", async () => {
     const props = getProps();
     props.ctaStyles.color = {
       selectedColor: "palette-secondary",
@@ -1006,7 +1012,7 @@ describe("FormSection", () => {
       selectedColor: "white",
       contrastingColor: "black",
     };
-    renderForm(props, true);
+    await renderForm(props, true);
 
     const button = screen.getByRole("button", { name: "Send Message" });
     expect(button.getAttribute("style")).toContain(
@@ -1023,13 +1029,13 @@ describe("FormSection", () => {
     });
   });
 
-  it("when CTA and opt-in labels use entity fields, then the Form shows entity text", () => {
+  it("when CTA and opt-in labels use entity fields, then the Form shows entity text", async () => {
     const props = getProps();
     props.data.submitLabel.field = "formButtonLabel";
     props.data.submitLabel.constantValueEnabled = false;
     props.data.phoneOptInText.field = "formConsent";
     props.data.phoneOptInText.constantValueEnabled = false;
-    renderForm(props, true, undefined, {
+    await renderForm(props, true, undefined, {
       id: "location-1",
       locale: "en",
       formButtonLabel: "Send request",
@@ -1040,13 +1046,13 @@ describe("FormSection", () => {
     expect(screen.getByText("I agree to receive text messages.")).toBeTruthy();
   });
 
-  it("when form text color is set, then the section uses it and the field groups stay ordered", () => {
+  it("when form text color is set, then the section uses it and the field groups stay ordered", async () => {
     const props = getProps();
     props.styles.textColor = {
       selectedColor: "palette-secondary",
       contrastingColor: "palette-secondary-contrast",
     };
-    const { container } = renderForm(props, true);
+    const { container } = await renderForm(props, true);
 
     expect(container.querySelector("section")?.className).toContain(
       "text-palette-secondary"
@@ -1059,8 +1065,8 @@ describe("FormSection", () => {
     ]);
   });
 
-  it("when the preferred contact method changes, then the required marker moves to its input", () => {
-    renderForm(getProps(), true);
+  it("when the preferred contact method changes, then the required marker moves to its input", async () => {
+    await renderForm(getProps(), true);
     const phone = screen.getByPlaceholderText("Phone") as HTMLInputElement;
     const email = screen.getByPlaceholderText("Email") as HTMLInputElement;
 
@@ -1086,7 +1092,7 @@ describe("FormSection", () => {
       required: true,
       options: [{ label: "Buying a home", value: "home" }],
     });
-    renderForm(props);
+    await renderForm(props);
     const button = screen.getByRole("button", { name: "Send Message" });
     await waitFor(() =>
       expect((button as HTMLButtonElement).disabled).toBe(false)
@@ -1122,11 +1128,12 @@ describe("FormSection", () => {
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
   });
 
-  it("when a saved entity layout uses FormSection, then its hidden config is available", () => {
-    expect(sharedComponentMetadata).toContainEqual({
+  it("when a saved entity layout uses FormSection, then its section config is available", () => {
+    expect(config).toMatchObject({
       id: "FormSection",
       pageSetTypes: ["ENTITY"],
     });
-    expect(sharedComponentConfigs.FormSection).toBe(FormSection);
+    expect(sharedComponentMetadata.some((component) => component.id === config.id)).toBe(false);
+    expect(sharedComponentConfigs.FormSection).toBeUndefined();
   });
 });

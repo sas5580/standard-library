@@ -3,7 +3,7 @@ import {
   type FormField,
   hasInvalidConfiguration,
   prepareSubmissionData,
-} from "./formSectionUtils.ts";
+} from "../library/shared/sectionSupport/form/formSectionUtils.ts";
 
 describe("hasInvalidConfiguration", () => {
   it.each([

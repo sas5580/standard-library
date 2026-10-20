@@ -10,6 +10,7 @@ import {
   msg,
   pt,
   resolveComponentData,
+  SectionConfig,
   ThemeColor,
   ThemeOptions,
   themeManagerCn,
@@ -26,16 +27,16 @@ import {
   getTextColorStyle,
   StreamDocument,
 } from "@yext/visual-editor/section-library-support";
-import { PageSection } from "./sectionSupport/atoms/pageSection.tsx";
-import { VisibilityWrapper } from "./sectionSupport/atoms/visibilityWrapper.tsx";
-import { Heading } from "./sectionSupport/atoms/heading.tsx";
-import { Body } from "./sectionSupport/atoms/body.tsx";
-import { Button } from "./sectionSupport/atoms/button.tsx";
+import { PageSection } from "../shared/sectionSupport/atoms/pageSection.tsx";
+import { VisibilityWrapper } from "../shared/sectionSupport/atoms/visibilityWrapper.tsx";
+import { Heading } from "../shared/sectionSupport/atoms/heading.tsx";
+import { Body } from "../shared/sectionSupport/atoms/body.tsx";
+import { Button } from "../shared/sectionSupport/atoms/button.tsx";
 import {
   type FormField,
   hasInvalidConfiguration,
   prepareSubmissionData,
-} from "./formSectionUtils.ts";
+} from "../shared/sectionSupport/form/formSectionUtils.ts";
 
 /** Saved Form settings for content, appearance, and live-page visibility. */
 export interface FormSectionProps {
@@ -45,7 +46,7 @@ export interface FormSectionProps {
     description: YextEntityField<TranslatableRichText>;
     phoneOptInText: YextEntityField<TranslatableRichText>;
     submitLabel: YextEntityField<TranslatableString>;
-    formType: "HS_CONTACT" | "HS_EVENT";
+    formType: "HS_CONTACT" | "HS_EVENT" | "CUSTOM_PLUGIN" | "EMAIL_ONLY";
     showPreferredContactMethod: boolean;
     defaultContactMethod: "PHONE" | "EMAIL";
     fields: FormField[];
@@ -985,6 +986,14 @@ const formSectionFields: YextFields<FormSectionProps> = {
             label: msg("form.hearsayEvent", "Hearsay Event"),
             value: "HS_EVENT",
           },
+          {
+            label: msg("form.customPlugin", "Custom Plugin"),
+            value: "CUSTOM_PLUGIN",
+          },
+          {
+            label: msg("form.emailOnly", "Email Only"),
+            value: "EMAIL_ONLY",
+          },
         ],
       },
       showPreferredContactMethod: {
@@ -1233,4 +1242,12 @@ export const FormSection: YextComponentConfig<FormSectionProps> = {
       <FormSectionComponent {...props} />
     </VisibilityWrapper>
   ),
+};
+
+export const config: SectionConfig = {
+  id: "FormSection",
+  displayName: "Form Section",
+  description: "Renders a configurable contact or event form.",
+  pageSetTypes: ["ENTITY"],
+  category: "Page Sections",
 };
