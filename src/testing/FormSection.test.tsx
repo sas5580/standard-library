@@ -168,7 +168,6 @@ describe("FormSection", () => {
           phone: "5555555555",
           relate_opt_in: true,
           custom_data: {
-            yext_wingspan_url: "",
             reason: ["home", "savings"],
           },
         },
@@ -225,7 +224,6 @@ describe("FormSection", () => {
       preferred_contact_method: "EMAIL",
       email: "ada@example.com",
       custom_data: {
-        yext_wingspan_url: "",
         preferred_time: "morning",
       },
     });
@@ -251,25 +249,19 @@ describe("FormSection", () => {
     expect(execute).not.toHaveBeenCalled();
   });
 
-  it("rejects a visible honeypot custom key", async () => {
+  it("allows custom website keys", async () => {
     const props = getProps();
     props.data.fields.push({
       type: "text",
       label: "Website",
-      key: "yext_wingspan_url",
+      key: "website_url",
     });
-    await renderForm(props);
-    expect(screen.getByRole("alert").textContent).toContain(
-      "This form is not ready"
+    await renderForm(props, true);
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByLabelText("Website").getAttribute("name")).toBe(
+      "custom_data[website_url]"
     );
-    expect(
-      (
-        screen.getByRole("button", {
-          name: "Send Message",
-        }) as HTMLButtonElement
-      ).disabled
-    ).toBe(true);
-    expect(window.turnstile?.render).not.toHaveBeenCalled();
   });
 
   it("keeps values after a failed request and gets a new token for retry", async () => {
@@ -556,36 +548,56 @@ describe("FormSection", () => {
     }
   );
 
-  it("sends the hidden honeypot value in custom data", async () => {
+  it("submits injected custom inputs alongside configured controls", async () => {
     const props = getProps();
+    props.data.fields.push(
+      { type: "text", label: "Role", key: " role ", required: true },
+      { type: "dropdown", label: "Time", key: " time ", required: true, options: [{ label: "Morning", value: " morning " }] },
+      { type: "checkboxGroup", label: "Reasons", key: " reasons ", required: true, options: [{ label: "Home", value: "home" }] }
+    );
     const { container } = await renderForm(props);
+    const form = container.querySelector("form")!;
+    for (const [key, value] of [
+      ["injected_name", "  injected  "],
+      ["spaces", "   "],
+      ["empty", ""],
+      ["repeated", "one"],
+      ["repeated", ""],
+      ["repeated", " two "],
+      ["role", "injected role"],
+    ]) {
+      const input = document.createElement("input");
+      input.type = "hidden";
+      input.name = `custom_data[${key}]`;
+      input.value = value;
+      form.append(input);
+    }
     const button = screen.getByRole("button", { name: "Send Message" });
-    await waitFor(() =>
-      expect((button as HTMLButtonElement).disabled).toBe(false)
-    );
+    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
 
-    fireEvent.change(screen.getByLabelText(/First name/), {
-      target: { value: "Ada" },
-    });
-    fireEvent.change(screen.getByLabelText(/Last name/), {
-      target: { value: "Lovelace" },
-    });
-    fireEvent.change(screen.getByPlaceholderText("Phone"), {
-      target: { value: "5555555555" },
-    });
-    fireEvent.change(
-      container.querySelector<HTMLInputElement>(
-        'input[name="yext_wingspan_url"]'
-      )!,
-      { target: { value: "https://spam.example" } }
-    );
+    for (const [label, value] of [["First name", "Ada"], ["Last name", "Lovelace"], ["Phone", "5555555555"], ["Role", " Agent "]]) {
+      fireEvent.change(screen.getByPlaceholderText(label), { target: { value } });
+    }
+    expect(screen.getByLabelText("Role *").getAttribute("name")).toBe("custom_data[role]");
+    expect(screen.getByLabelText("Time *").getAttribute("name")).toBe("custom_data[time]");
+    expect(screen.getByLabelText("Home").getAttribute("name")).toBe("custom_data[reasons]");
+    fireEvent.click(screen.getByLabelText("Home"));
+    fireEvent.click(button);
+    expect(execute).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Time *"), { target: { value: " morning " } });
     fireEvent.click(button);
 
     await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
-    expect(
-      JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string).data
-        .custom_data.yext_wingspan_url
-    ).toBe("https://spam.example");
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string).data.custom_data).toEqual({
+      role: ["Agent", "injected role"],
+      time: "morning",
+      reasons: ["home"],
+      injected_name: "  injected  ",
+      spaces: "   ",
+      repeated: ["one", " two "],
+    });
   });
 
   it("uses the theme page section width", async () => {
@@ -876,7 +888,7 @@ describe("FormSection", () => {
       ["phone", "Phone"],
       ["email", "Email"],
       ["message", "Message"],
-      ["custom_7", "Reference number"],
+      ["custom_data[reference_number]", "Reference number"],
     ]) {
       expect(
         (

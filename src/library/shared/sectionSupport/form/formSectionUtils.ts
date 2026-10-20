@@ -55,9 +55,8 @@ export function hasInvalidConfiguration(
       ["text", "dropdown", "checkboxGroup"].includes(field.type)
     )
     .map((field) => field.key?.trim() ?? "");
-  // The honeypot is hidden in the form, so visible fields cannot use its key.
   const invalidCustomKeys =
-    customKeys.some((key) => !key || key.toLowerCase().includes("wingspan")) ||
+    customKeys.some((key) => !key) ||
     new Set(customKeys).size !== customKeys.length;
   const duplicateStandardFields = [
     "firstName",
@@ -103,23 +102,25 @@ export function prepareSubmissionData(
   relate_opt_in?: boolean;
   custom_data: Record<string, string | string[]>;
 } | null {
+  // Normalize standard values and check required configured fields.
   const firstName = String(values.get("first_name") ?? "").trim();
   const lastName = String(values.get("last_name") ?? "").trim();
   const phone = String(values.get("phone") ?? "").trim();
   const email = String(values.get("email") ?? "").trim();
   const missingRequiredValue = fields.some(
-    (field, index) =>
+    (field) =>
       field.required &&
       (field.type === "checkboxGroup"
-        ? !values.getAll(`custom_${index}`).length
-        : ["text", "message", "phone", "email"].includes(field.type) &&
+        ? !values.getAll(`custom_data[${field.key?.trim()}]`).length
+        : ["text", "dropdown", "message", "phone", "email"].includes(field.type) &&
           !String(
             values.get(
-              field.type === "text" ? `custom_${index}` : field.type
+              field.type === "text" || field.type === "dropdown" ? `custom_data[${field.key?.trim()}]` : field.type
             ) ?? ""
           ).trim())
   );
 
+  // Reject submissions missing names, the selected contact value, or required fields.
   if (
     !firstName ||
     !lastName ||
@@ -129,26 +130,40 @@ export function prepareSubmissionData(
     return null;
   }
 
-  const customData: Record<string, string | string[]> = {
-    yext_wingspan_url: String(values.get("yext_wingspan_url") ?? ""),
-  };
-  fields.forEach((field, index) => {
-    if (
-      !["text", "dropdown", "checkboxGroup"].includes(field.type) ||
-      !field.key
-    ) {
+  // Index configured custom fields by key to preserve their value handling.
+  const customFields = new Map(
+    fields
+      .filter((field) => ["text", "dropdown", "checkboxGroup"].includes(field.type))
+      .map((field) => [field.key?.trim(), field])
+  );
+
+  // Collect populated custom_data[key] entries, including unconfigured inputs.
+  const customValues = new Map<string, string[]>();
+  values.forEach((value, name) => {
+    const match = /^custom_data\[([^[\]]+)]$/.exec(name);
+    if (!match || typeof value !== "string") {
       return;
     }
-    const name = `custom_${index}`;
-    const value =
-      field.type === "checkboxGroup"
-        ? values.getAll(name).map(String)
-        : String(values.get(name) ?? "").trim();
-    if (Array.isArray(value) ? value.length : value) {
-      customData[field.key.trim()] = value;
+    const key = match[1];
+    const field = customFields.get(key);
+    // Trim configured text and dropdown values; preserve other strings verbatim.
+    const populatedValue = field && field.type !== "checkboxGroup" ? value.trim() : value;
+    if (populatedValue) {
+      const entries = customValues.get(key) ?? [];
+      entries.push(populatedValue);
+      customValues.set(key, entries);
     }
   });
 
+  // Keep checkbox groups and repeated values as arrays; use strings otherwise.
+  const customData = Object.fromEntries(
+    Array.from(customValues, ([key, entries]) => [
+      key,
+      customFields.get(key)?.type === "checkboxGroup" || entries.length > 1 ? entries : entries[0],
+    ])
+  );
+
+  // Build the API payload with populated optional fields and applicable phone consent.
   return {
     first_name: firstName,
     last_name: lastName,
