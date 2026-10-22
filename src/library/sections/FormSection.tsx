@@ -847,6 +847,7 @@ const FormSectionComponent: PuckComponent<FormSectionProps> = ({
           </div>
         </EntityField>
         <form
+          id={`${id}-form`}
           ref={formRef}
           onSubmit={submit}
           onKeyDown={(event: React.KeyboardEvent<HTMLFormElement>) => {
